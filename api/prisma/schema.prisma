@@ -1,0 +1,372 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================
+// MULTITENANCY
+// =====================================================
+
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  plan        Plan     @default(FREE)
+  isActive    Boolean  @default(true)
+  settings    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users         User[]
+  channels      Channel[]
+  contacts      Contact[]
+  conversations Conversation[]
+  aiContexts    AiContext[]
+  contextFiles  ContextFile[]
+
+  @@map("tenants")
+}
+
+enum Plan {
+  FREE
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+// =====================================================
+// USUARIOS
+// =====================================================
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  email        String
+  passwordHash String
+  name         String
+  role         UserRole @default(AGENT)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedConversations Conversation[] @relation("AssignedAgent")
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  AGENT
+}
+
+// =====================================================
+// CANALES
+// =====================================================
+
+model Channel {
+  id           String        @id @default(uuid())
+  tenantId     String
+  type         ChannelType
+  name         String
+  credentials  Json
+  webhookSecret String?
+  isActive     Boolean       @default(true)
+  metadata     Json?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  messages     Message[]
+
+  @@unique([tenantId, type, name])
+  @@index([tenantId, type])
+  @@map("channels")
+}
+
+enum ChannelType {
+  WHATSAPP
+  INSTAGRAM
+  MESSENGER
+  TELEGRAM
+  WEBCHAT
+}
+
+// =====================================================
+// CONTACTOS
+// =====================================================
+
+model Contact {
+  id              String   @id @default(uuid())
+  tenantId        String
+  externalId      String
+  channelType     ChannelType
+  name            String?
+  phone           String?
+  email           String?
+  avatarUrl       String?
+  metadata        Json?
+  tags            String[]
+  firstContactAt  DateTime @default(now())
+  lastContactAt   DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations   Conversation[]
+
+  @@unique([tenantId, externalId, channelType])
+  @@index([tenantId, phone])
+  @@index([tenantId, email])
+  @@map("contacts")
+}
+
+// =====================================================
+// CONVERSACIONES
+// =====================================================
+
+model Conversation {
+  id            String             @id @default(uuid())
+  tenantId      String
+  channelId     String
+  contactId     String
+  status        ConversationStatus @default(ACTIVE)
+  assignedToId  String?
+  aiEnabled     Boolean            @default(true)
+  subject       String?
+  metadata      Json?
+  lastMessageAt DateTime           @default(now())
+  closedAt      DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel       Channel      @relation(fields: [channelId], references: [id])
+  contact       Contact      @relation(fields: [contactId], references: [id])
+  assignedTo    User?        @relation("AssignedAgent", fields: [assignedToId], references: [id])
+  messages      Message[]
+  memoryEntries AiMemoryEntry[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, channelId])
+  @@index([contactId])
+  @@index([lastMessageAt])
+  @@map("conversations")
+}
+
+enum ConversationStatus {
+  ACTIVE
+  WAITING_HUMAN
+  CLOSED
+  ARCHIVED
+}
+
+// =====================================================
+// MENSAJES
+// =====================================================
+
+model Message {
+  id               String        @id @default(uuid())
+  conversationId   String
+  channelId        String
+  direction        MessageDirection
+  content          String
+  contentType      ContentType   @default(TEXT)
+  mediaUrl         String?
+  mediaMimeType    String?
+  externalId       String?
+  replyToId        String?
+  rawPayload       Json?
+  sanitizedContent String?
+  metadata         Json?
+  status           MessageStatus @default(RECEIVED)
+  aiProcessed      Boolean       @default(false)
+  errorMessage     String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  conversation     Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  channel          Channel       @relation(fields: [channelId], references: [id])
+
+  @@index([conversationId, createdAt])
+  @@index([channelId, direction])
+  @@index([externalId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum ContentType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  LOCATION
+  STICKER
+  REACTION
+  TEMPLATE
+}
+
+enum MessageStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+// =====================================================
+// CONTEXTO DE IA
+// =====================================================
+
+model AiContext {
+  id              String   @id @default(uuid())
+  tenantId        String
+  name            String
+  systemPrompt    String
+  personality     String?
+  language        String   @default("es")
+  provider        AiProvider @default(OPENAI)
+  model           String   @default("gpt-4o-mini")
+  maxTokens       Int      @default(1000)
+  memoryWindowSize Int     @default(20)
+  isActive        Boolean  @default(true)
+  fallbackMessage String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contextFiles    ContextFile[]
+
+  @@index([tenantId, isActive])
+  @@map("ai_contexts")
+}
+
+enum AiProvider {
+  OPENAI
+  ANTHROPIC
+  CUSTOM
+}
+
+// =====================================================
+// ARCHIVOS DE CONTEXTO
+// =====================================================
+
+model ContextFile {
+  id            String   @id @default(uuid())
+  tenantId      String
+  aiContextId   String
+  fileName      String
+  fileType      String
+  fileSize      Int
+  storageKey    String
+  storageUrl    String?
+  content       String?
+  embeddingId   String?
+  chunkCount    Int      @default(0)
+  status        FileStatus @default(UPLOADING)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  aiContext     AiContext  @relation(fields: [aiContextId], references: [id], onDelete: Cascade)
+
+  @@index([aiContextId])
+  @@index([tenantId])
+  @@map("context_files")
+}
+
+enum FileStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
+}
+
+// =====================================================
+// MEMORIA DE IA
+// =====================================================
+
+model AiMemoryEntry {
+  id              String   @id @default(uuid())
+  conversationId  String
+  role            MemoryRole
+  content         String
+  tokenCount      Int?
+  summary         String?
+  isActive        Boolean  @default(true)
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, isActive, createdAt])
+  @@map("ai_memory_entries")
+}
+
+enum MemoryRole {
+  USER
+  ASSISTANT
+  SYSTEM
+  SUMMARY
+}
+
+// =====================================================
+// LOGS DE ACCIONES
+// =====================================================
+
+model ActionLog {
+  id            String     @id @default(uuid())
+  tenantId      String
+  conversationId String?
+  actionType    String
+  payload       Json?
+  result        Json?
+  status        ActionStatus @default(PENDING)
+  errorMessage  String?
+  executedAt    DateTime   @default(now())
+
+  @@index([tenantId, actionType])
+  @@index([conversationId])
+  @@map("action_logs")
+}
+
+enum ActionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+// =====================================================
+// WEBHOOK LOGS
+// =====================================================
+
+model WebhookLog {
+  id          String   @id @default(uuid())
+  channelType ChannelType
+  rawPayload  Json
+  headers     Json?
+  sourceIp    String?
+  processed   Boolean  @default(false)
+  errorMessage String?
+  receivedAt  DateTime @default(now())
+
+  @@index([channelType, receivedAt])
+  @@index([processed])
+  @@map("webhook_logs")
+}
