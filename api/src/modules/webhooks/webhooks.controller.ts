@@ -5,6 +5,7 @@ import {
   Param,
   Query,
   Req,
+  Body,
   HttpCode,
   HttpStatus,
   Logger,
@@ -15,6 +16,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ChannelType } from '@prisma/client';
 import type { Request } from 'express';
+import { ConfigService } from '@nestjs/config';
 
 import { WebhooksService } from './webhooks.service.js';
 
@@ -29,6 +31,7 @@ export class WebhooksController {
 
   constructor(
     private readonly webhooksService: WebhooksService,
+    private readonly configService: ConfigService,
     @InjectQueue('message-inbound')
     private readonly messageInboundQueue: Queue,
   ) {}
@@ -53,6 +56,69 @@ export class WebhooksController {
     }
 
     return result;
+  }
+
+  @Post('new-chat')
+  @HttpCode(HttpStatus.OK)
+  @ApiExcludeEndpoint()
+  async handleNewChat(
+    @Body() body: Record<string, unknown>,
+  ): Promise<{ status: string }> {
+    this.logger.log('Webhook new-chat received');
+
+    const instance = body.instance as string | undefined;
+    const data = body.data as Record<string, unknown> | undefined;
+    const key = data?.key as Record<string, unknown> | undefined;
+    const remoteJid = key?.remoteJid as string | undefined;
+    const fromMe = key?.fromMe as boolean | undefined;
+
+    if (!instance || !remoteJid) {
+      this.logger.warn('new-chat webhook: missing instance or remoteJid');
+      return { status: 'ignored' };
+    }
+
+    if (fromMe) {
+      return { status: 'ignored' };
+    }
+
+    // Strip @s.whatsapp.net / @g.us suffix to get the raw number
+    const number = remoteJid.split('@')[0];
+
+    const evolutionUrl = this.configService.get<string>(
+      'EVOLUTION_API_URL',
+      'http://evolution-api:8080',
+    );
+    const evolutionKey = this.configService.get<string>(
+      'EVOLUTION_API_KEY',
+      '',
+    );
+
+    try {
+      const response = await fetch(
+        `${evolutionUrl}/message/sendText/${instance}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: evolutionKey,
+          },
+          body: JSON.stringify({ number, text: 'hola esto es un nuevo chat' }),
+        },
+      );
+
+      if (!response.ok) {
+        const err = await response.text();
+        this.logger.error(`Evolution API error (${response.status}): ${err}`);
+      } else {
+        this.logger.log(`Message sent to ${number} via instance ${instance}`);
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to call Evolution API: ${(error as Error).message}`,
+      );
+    }
+
+    return { status: 'ok' };
   }
 
   @Post(':channelType/:channelId')

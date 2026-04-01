@@ -14,6 +14,7 @@ RUN npm ci
 FROM base AS development
 
 COPY . .
+RUN npx prisma generate
 
 EXPOSE 3000
 CMD ["npm", "run", "start:dev"]
