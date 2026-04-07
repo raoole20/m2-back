@@ -5,11 +5,30 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ChannelType, Prisma } from '@prisma/client';
+import { ChannelType, ContentType, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NormalizedMessage } from '../../common/interfaces/normalized-message.interface.js';
 import { AdapterFactory } from './adapters/adapter.factory.js';
+import {
+  discriminateMessageType,
+  MessageCategory,
+} from '../../common/utils/message-content.discriminator.js';
+
+const EVOLUTION_TYPE_MAP: Record<string, ContentType> = {
+  conversation: ContentType.TEXT,
+  extendedTextMessage: ContentType.TEXT,
+  listResponseMessage: ContentType.TEXT,
+  buttonsResponseMessage: ContentType.TEXT,
+  templateMessage: ContentType.TEMPLATE,
+  imageMessage: ContentType.IMAGE,
+  videoMessage: ContentType.VIDEO,
+  audioMessage: ContentType.AUDIO,
+  documentMessage: ContentType.DOCUMENT,
+  stickerMessage: ContentType.STICKER,
+  locationMessage: ContentType.LOCATION,
+  reactionMessage: ContentType.REACTION,
+};
 
 const META_PLATFORMS = new Set<ChannelType>([
   ChannelType.WHATSAPP,
@@ -110,6 +129,78 @@ export class WebhooksService {
       channelId: channel.id,
       tenantId: channel.tenantId,
     };
+  }
+
+  async handleNewChat(
+    body: Record<string, unknown>,
+  ): Promise<{ status: string }> {
+    const instance = body.instance as string | undefined;
+    const data = body.data as Record<string, unknown> | undefined;
+    const key = data?.key as Record<string, unknown> | undefined;
+    const remoteJid = key?.remoteJid as string | undefined;
+    const fromMe = key?.fromMe as boolean | undefined;
+
+    if (!instance || !remoteJid) {
+      this.logger.warn('new-chat webhook: missing instance or remoteJid');
+      return { status: 'ignored' };
+    }
+
+    if (fromMe) {
+      return { status: 'ignored' };
+    }
+
+    const number = remoteJid.split('@')[0];
+
+    const messageType = data?.messageType as string | undefined;
+    const contentType =
+      EVOLUTION_TYPE_MAP[messageType ?? ''] ?? ContentType.TEXT;
+    const category = discriminateMessageType(contentType);
+
+    const categoryLabel: Record<MessageCategory, string> = {
+      [MessageCategory.TEXT]: 'texto',
+      [MessageCategory.IMAGE]: 'imagen',
+      [MessageCategory.AUDIO]: 'audio',
+      [MessageCategory.DOCUMENT]: 'documento',
+      [MessageCategory.OTHER]: 'otro',
+    };
+
+    const replyText = `Tipo de mensaje recibido: ${categoryLabel[category]}`;
+
+    const evolutionUrl = this.configService.get<string>(
+      'EVOLUTION_API_URL',
+      'http://evolution-api:8080',
+    );
+    const evolutionKey = this.configService.get<string>(
+      'EVOLUTION_API_KEY',
+      '',
+    );
+
+    try {
+      const response = await fetch(
+        `${evolutionUrl}/message/sendText/${instance}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: evolutionKey,
+          },
+          body: JSON.stringify({ number, text: replyText }),
+        },
+      );
+
+      if (!response.ok) {
+        const err = await response.text();
+        this.logger.error(`Evolution API error (${response.status}): ${err}`);
+      } else {
+        this.logger.log(`Message sent to ${number} via instance ${instance}`);
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to call Evolution API: ${(error as Error).message}`,
+      );
+    }
+
+    return { status: 'ok' };
   }
 
   async cleanupOldLogs(daysToKeep: number = 30): Promise<number> {
