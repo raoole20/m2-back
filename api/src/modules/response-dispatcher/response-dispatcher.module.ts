@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ResponseDispatcherService } from './response-dispatcher.service.js';
 import { SenderFactory } from './sender.factory.js';
 import { WhatsAppSender } from './senders/whatsapp.sender.js';
+import { EvolutionWhatsAppSender } from './senders/evolution-whatsapp.sender.js';
 import { TelegramSender } from './senders/telegram.sender.js';
 import { InstagramSender } from './senders/instagram.sender.js';
 import { MessengerSender } from './senders/messenger.sender.js';
@@ -11,6 +12,7 @@ import { MessengerSender } from './senders/messenger.sender.js';
     ResponseDispatcherService,
     SenderFactory,
     WhatsAppSender,
+    EvolutionWhatsAppSender,
     TelegramSender,
     InstagramSender,
     MessengerSender,

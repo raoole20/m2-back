@@ -99,12 +99,14 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - STORAGE_TYPE=${STORAGE_TYPE:-local}
       - STORAGE_LOCAL_PATH=${STORAGE_LOCAL_PATH:-./uploads}
       - META_APP_SECRET=${META_APP_SECRET:-}
       - META_VERIFY_TOKEN=${META_VERIFY_TOKEN:-}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - SWAGGER_ENABLED=${SWAGGER_ENABLED:-true}
+      - EVOLUTION_API_URL=${EVOLUTION_API_URL:-http://evolution-api:8080}
     volumes:
       - api_uploads:/app/uploads
     depends_on:

@@ -15,8 +15,11 @@ FROM base AS development
 
 COPY . .
 
+COPY entrypoint.dev.sh /usr/local/bin/entrypoint.dev.sh
+RUN chmod +x /usr/local/bin/entrypoint.dev.sh
+
 EXPOSE 3000
-CMD ["npm", "run", "start:dev"]
+ENTRYPOINT ["entrypoint.dev.sh"]
 
 # =====================================================
 # BUILD — Compile TypeScript

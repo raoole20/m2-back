@@ -35,14 +35,14 @@ export class WebhooksController {
 
   @Get(':channelType/:channelId')
   @ApiExcludeEndpoint()
-  handleVerification(
+  async handleVerification(
     @Param('channelType') channelTypeParam: string,
     @Param('channelId') channelId: string,
     @Query() query: Record<string, string>,
-  ): string {
+  ): Promise<string> {
     const channelType = this.parseChannelType(channelTypeParam);
 
-    const result = this.webhooksService.handleVerification(
+    const result = await this.webhooksService.handleVerification(
       channelType,
       channelId,
       query,

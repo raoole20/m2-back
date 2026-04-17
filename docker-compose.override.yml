@@ -4,4 +4,3 @@ services:
     volumes:
       - ./api/src:/app/src
       - ./api/prisma:/app/prisma
-    command: npm run start:dev

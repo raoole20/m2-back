@@ -74,6 +74,7 @@ model Channel {
   id           String        @id @default(uuid())
   tenantId     String
   type         ChannelType
+  provider     ChannelProvider @default(META)
   name         String
   credentials  Json
   webhookSecret String?
@@ -86,7 +87,7 @@ model Channel {
   conversations Conversation[]
   messages     Message[]
 
-  @@unique([tenantId, type, name])
+  @@unique([tenantId, type, provider, name])
   @@index([tenantId, type])
   @@map("channels")
 }
@@ -97,6 +98,11 @@ enum ChannelType {
   MESSENGER
   TELEGRAM
   WEBCHAT
+}
+
+enum ChannelProvider {
+  META
+  EVOLUTION
 }
 
 // =====================================================
@@ -260,6 +266,7 @@ model AiContext {
 enum AiProvider {
   OPENAI
   ANTHROPIC
+  GEMINI
   CUSTOM
 }
 

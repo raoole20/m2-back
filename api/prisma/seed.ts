@@ -52,7 +52,7 @@ async function main() {
 
   // 4. Create a WhatsApp channel (dummy credentials)
   const channel = await prisma.channel.upsert({
-    where: { tenantId_type_name: { tenantId: tenant.id, type: ChannelType.WHATSAPP, name: 'WhatsApp Principal' } },
+    where: { tenantId_type_provider_name: { tenantId: tenant.id, type: ChannelType.WHATSAPP, provider: 'META', name: 'WhatsApp Principal' } },
     update: {},
     create: {
       tenantId: tenant.id,

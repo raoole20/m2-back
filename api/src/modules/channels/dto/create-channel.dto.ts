@@ -8,12 +8,21 @@ import {
   IsOptional,
   MaxLength,
 } from 'class-validator';
-import { ChannelType } from '@prisma/client';
+import { ChannelType, ChannelProvider } from '@prisma/client';
 
 export class CreateChannelDto {
   @ApiProperty({ enum: ChannelType, description: 'Channel type' })
   @IsEnum(ChannelType)
   type: ChannelType;
+
+  @ApiPropertyOptional({
+    enum: ChannelProvider,
+    description: 'Channel provider (META for Cloud API, EVOLUTION for Evolution API)',
+    default: 'META',
+  })
+  @IsOptional()
+  @IsEnum(ChannelProvider)
+  provider?: ChannelProvider;
 
   @ApiProperty({ description: 'Channel display name', maxLength: 255 })
   @IsString()

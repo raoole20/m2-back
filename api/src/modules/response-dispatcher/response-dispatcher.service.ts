@@ -36,7 +36,10 @@ export class ResponseDispatcherService {
       return null;
     }
 
-    const sender = this.senderFactory.getSender(conversation.channel.type);
+    const sender = this.senderFactory.getSender(
+      conversation.channel.type,
+      conversation.channel.provider,
+    );
     if (!sender) {
       this.logger.warn(
         `No sender available for channel type ${conversation.channel.type}`,

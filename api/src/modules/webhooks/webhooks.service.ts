@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ChannelType, Prisma } from '@prisma/client';
+import { ChannelType, ChannelProvider, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NormalizedMessage } from '../../common/interfaces/normalized-message.interface.js';
@@ -27,12 +27,17 @@ export class WebhooksService {
     private readonly configService: ConfigService,
   ) {}
 
-  handleVerification(
+  async handleVerification(
     channelType: ChannelType,
-    _channelId: string,
+    channelId: string,
     query: Record<string, string>,
-  ): string | null {
-    const adapter = this.adapterFactory.getAdapter(channelType);
+  ): Promise<string | null> {
+    const channel = await this.prisma.channel.findFirst({
+      where: { id: channelId, type: channelType, isActive: true },
+    });
+
+    const provider = channel?.provider ?? ChannelProvider.META;
+    const adapter = this.adapterFactory.getAdapter(channelType, provider);
     const verifyToken = this.configService.get<string>(
       'META_VERIFY_TOKEN',
       '',
@@ -77,10 +82,21 @@ export class WebhooksService {
       },
     });
 
-    const adapter = this.adapterFactory.getAdapter(channelType);
+    const adapter = this.adapterFactory.getAdapter(
+      channelType,
+      channel.provider,
+    );
 
-    const secret = this.resolveSecret(channelType, channel.webhookSecret);
-    const signature = this.extractSignature(channelType, headers);
+    const secret = this.resolveSecret(
+      channelType,
+      channel.provider,
+      channel.webhookSecret,
+    );
+    const signature = this.extractSignature(
+      channelType,
+      channel.provider,
+      headers,
+    );
 
     if (!adapter.validateSignature(rawBody, signature, secret)) {
       await this.prisma.webhookLog.update({
@@ -102,7 +118,7 @@ export class WebhooksService {
     });
 
     this.logger.log(
-      `Processed ${messages.length} message(s) from ${channelType} channel ${channel.id}`,
+      `Processed ${messages.length} message(s) from ${channelType}:${channel.provider} channel ${channel.id}`,
     );
 
     return {
@@ -129,8 +145,13 @@ export class WebhooksService {
 
   private resolveSecret(
     channelType: ChannelType,
+    provider: ChannelProvider,
     channelWebhookSecret: string | null,
   ): string {
+    if (provider === ChannelProvider.EVOLUTION) {
+      return channelWebhookSecret ?? '';
+    }
+
     if (META_PLATFORMS.has(channelType)) {
       return this.configService.get<string>('META_APP_SECRET', '');
     }
@@ -144,8 +165,13 @@ export class WebhooksService {
 
   private extractSignature(
     channelType: ChannelType,
+    provider: ChannelProvider,
     headers: Record<string, string>,
   ): string {
+    if (provider === ChannelProvider.EVOLUTION) {
+      return headers['apikey'] ?? '';
+    }
+
     if (META_PLATFORMS.has(channelType)) {
       return headers['x-hub-signature-256'] ?? '';
     }

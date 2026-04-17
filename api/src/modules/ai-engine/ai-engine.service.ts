@@ -4,6 +4,7 @@ import { AiContextService } from '../ai-context/ai-context.service.js';
 import { AiMemoryService } from '../ai-memory/ai-memory.service.js';
 import { OpenAiProvider } from './providers/openai.provider.js';
 import { AnthropicProvider } from './providers/anthropic.provider.js';
+import { GeminiProvider } from './providers/gemini.provider.js';
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -19,6 +20,7 @@ export class AiEngineService {
     private readonly aiMemoryService: AiMemoryService,
     private readonly openAiProvider: OpenAiProvider,
     private readonly anthropicProvider: AnthropicProvider,
+    private readonly geminiProvider: GeminiProvider,
   ) {}
 
   async processMessage(
@@ -77,6 +79,12 @@ export class AiEngineService {
         );
       } else if (context.provider === 'ANTHROPIC') {
         response = await this.anthropicProvider.chat(
+          messages,
+          context.model,
+          context.maxTokens,
+        );
+      } else if (context.provider === 'GEMINI') {
+        response = await this.geminiProvider.chat(
           messages,
           context.model,
           context.maxTokens,

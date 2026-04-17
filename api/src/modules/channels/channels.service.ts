@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ChannelProvider } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { encrypt, decrypt } from '../../shared/utils/crypto.util.js';
@@ -7,35 +8,77 @@ import { CreateChannelDto } from './dto/create-channel.dto.js';
 import { UpdateChannelDto } from './dto/update-channel.dto.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 import { PaginationMeta } from '../../common/dto/api-response.dto.js';
+import { EvolutionService } from './evolution.service.js';
 
 @Injectable()
 export class ChannelsService {
+  private readonly logger = new Logger(ChannelsService.name);
   private readonly encryptionKey: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly evolutionService: EvolutionService,
   ) {
     this.encryptionKey = this.config.getOrThrow<string>('ENCRYPTION_KEY');
   }
 
   async create(tenantId: string, dto: CreateChannelDto) {
+    const provider = dto.provider ?? ChannelProvider.META;
+    const credentials = dto.credentials as Record<string, string>;
+
+    const webhookSecret =
+      provider === ChannelProvider.EVOLUTION
+        ? (credentials.apiKey ?? randomBytes(32).toString('hex'))
+        : randomBytes(32).toString('hex');
+
     const encryptedCredentials = encrypt(
       JSON.stringify(dto.credentials),
       this.encryptionKey,
     );
-    const webhookSecret = randomBytes(32).toString('hex');
 
-    return this.prisma.channel.create({
+    const channel = await this.prisma.channel.create({
       data: {
         tenantId,
         type: dto.type,
+        provider,
         name: dto.name,
         credentials: encryptedCredentials,
         webhookSecret,
         isActive: dto.isActive ?? true,
       },
     });
+
+    if (provider === ChannelProvider.EVOLUTION) {
+      await this.setupEvolutionWebhook(channel.id, credentials);
+    }
+
+    return channel;
+  }
+
+  private async setupEvolutionWebhook(
+    channelId: string,
+    credentials: Record<string, string>,
+  ): Promise<void> {
+    const { instanceName, apiKey } = credentials;
+    if (!instanceName || !apiKey) return;
+
+    const callbackUrl = `http://api:3000/webhooks/whatsapp/${channelId}`;
+
+    try {
+      await this.evolutionService.setWebhook(
+        instanceName,
+        apiKey,
+        callbackUrl,
+      );
+      this.logger.log(
+        `Evolution webhook configured for channel ${channelId} → ${callbackUrl}`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to auto-configure Evolution webhook for channel ${channelId}: ${(error as Error).message}. You can configure it manually later.`,
+      );
+    }
   }
 
   async findAll(tenantId: string, pagination: PaginationDto) {
