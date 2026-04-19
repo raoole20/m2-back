@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, type LogLevel } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
@@ -7,8 +7,27 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor.js';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor.js';
 
+function resolveLogLevels(): LogLevel[] {
+  const env = (process.env.LOG_LEVEL ?? 'lite').toLowerCase();
+  if (env === 'full' || env === 'debug') {
+    return ['log', 'warn', 'error', 'debug', 'verbose'];
+  }
+  if (env === 'lite') {
+    return ['log', 'warn', 'error'];
+  }
+  if (env === 'quiet') {
+    return ['warn', 'error'];
+  }
+  const custom = env.split(',').map((s) => s.trim()).filter(Boolean);
+  if (custom.length > 0) return custom as LogLevel[];
+  return ['log', 'warn', 'error'];
+}
+
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true,
+    logger: resolveLogLevels(),
+  });
 
   // Security
   app.use(helmet());

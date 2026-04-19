@@ -19,6 +19,7 @@ import { CurrentTenant } from '../../common/decorators/tenant.decorator.js';
 import { ChannelsService } from './channels.service.js';
 import {
   EvolutionService,
+  EvolutionInstanceExistsError,
   type EvolutionInstanceResponse,
   type EvolutionConnectionState,
 } from './evolution.service.js';
@@ -34,8 +35,8 @@ export class EvolutionController {
   ) {}
 
   @Post(':channelId/evolution/connect')
-  @ApiOperation({ summary: 'Create Evolution instance and get QR code' })
-  @ApiResponse({ status: 201, description: 'Instance created, QR returned' })
+  @ApiOperation({ summary: 'Create Evolution instance (or reuse existing) and return QR/state' })
+  @ApiResponse({ status: 201, description: 'Instance ensured; webhook registered; QR or connection state returned' })
   @ApiResponse({ status: 400, description: 'Channel is not an Evolution provider' })
   async connect(
     @CurrentTenant() tenantId: string,
@@ -44,13 +45,26 @@ export class EvolutionController {
     const { credentials, baseUrl } =
       await this.getEvolutionCredentials(tenantId, channelId);
 
-    const result = await this.evolutionService.createInstance(
-      credentials.instanceName,
-      credentials.apiKey,
-      baseUrl,
-    );
+    let result: EvolutionInstanceResponse;
+    try {
+      result = await this.evolutionService.createInstance(
+        credentials.instanceName,
+        credentials.apiKey,
+        baseUrl,
+      );
+    } catch (error) {
+      if (error instanceof EvolutionInstanceExistsError) {
+        result = await this.evolutionService.connectInstance(
+          credentials.instanceName,
+          credentials.apiKey,
+          baseUrl,
+        );
+      } else {
+        throw error;
+      }
+    }
 
-    const callbackUrl = `http://api:3000/webhooks/whatsapp/${channelId}`;
+    const callbackUrl = `http://api:3000/webhooks/whatsapp/${channelId}?token=${credentials.apiKey}`;
     await this.evolutionService.setWebhook(
       credentials.instanceName,
       credentials.apiKey,

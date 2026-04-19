@@ -1,16 +1,20 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { ActionStatus } from '@prisma/client';
-import { Job } from 'bullmq';
+import { MessageDirection } from '@prisma/client';
+import { Job, Queue } from 'bullmq';
 
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { ContactResolver } from '../../modules/message-pipeline/steps/contact-resolver.js';
 import { ConversationResolver } from '../../modules/message-pipeline/steps/conversation-resolver.js';
 import { MessagePersister } from '../../modules/message-pipeline/steps/message-persister.js';
-import { AiEngineService } from '../../modules/ai-engine/ai-engine.service.js';
-import { ResponseDispatcherService } from '../../modules/response-dispatcher/response-dispatcher.service.js';
-import { ActionsService } from '../../modules/actions/actions.service.js';
+import { AiContextService } from '../../modules/ai-context/ai-context.service.js';
 import { NormalizedMessage } from '../../common/interfaces/normalized-message.interface.js';
+
+interface InboundJobData {
+  message: NormalizedMessage;
+  channelId: string;
+  tenantId: string;
+}
 
 @Processor('message-inbound')
 export class MessageInboundProcessor extends WorkerHost {
@@ -21,120 +25,95 @@ export class MessageInboundProcessor extends WorkerHost {
     private readonly contactResolver: ContactResolver,
     private readonly conversationResolver: ConversationResolver,
     private readonly messagePersister: MessagePersister,
-    private readonly aiEngineService: AiEngineService,
-    private readonly responseDispatcher: ResponseDispatcherService,
-    private readonly actionsService: ActionsService,
+    private readonly aiContextService: AiContextService,
+    @InjectQueue('ai-response') private readonly aiResponseQueue: Queue,
   ) {
     super();
   }
 
-  async process(
-    job: Job<{
-      messages: NormalizedMessage[];
-      channelId: string;
-      tenantId: string;
-    }>,
-  ): Promise<void> {
-    const { messages, channelId, tenantId } = job.data;
+  async process(job: Job<InboundJobData>): Promise<void> {
+    const { message: msg, channelId, tenantId } = job.data;
 
-    for (const msg of messages) {
-      try {
-        const contact = await this.contactResolver.resolve(tenantId, msg);
+    try {
+      const contact = await this.contactResolver.resolve(tenantId, msg);
 
-        const conversation = await this.conversationResolver.resolve(
-          tenantId,
-          channelId,
-          contact.id,
-        );
+      const conversation = await this.conversationResolver.resolve(
+        tenantId,
+        channelId,
+        contact.id,
+      );
 
-        const message = await this.messagePersister.persist(
-          conversation.id,
-          channelId,
-          msg,
-        );
+      const message = await this.messagePersister.persist(
+        conversation.id,
+        channelId,
+        msg,
+      );
 
-        await this.prisma.conversation.update({
-          where: { id: conversation.id },
-          data: { lastMessageAt: new Date() },
-        });
+      await this.prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastMessageAt: new Date() },
+      });
 
-        this.logger.log(
-          `Processed message ${message.id} for conversation ${conversation.id}`,
-        );
+      const oneLine = (message.content ?? '').replace(/\s+/g, ' ').trim();
+      this.logger.log(`📥 Mensaje entrante procesado → "${oneLine}"`);
 
-        if (conversation.aiEnabled) {
-          await this.processWithAi(tenantId, conversation.id, message.id, message.content);
-        }
-      } catch (error) {
-        this.logger.error(
-          `Failed to process message: ${(error as Error).message}`,
-          (error as Error).stack,
-        );
+      if (!conversation.aiEnabled) {
+        this.logger.log(`🚫 IA deshabilitada en conversación, omitiendo`);
+        return;
       }
+
+      await this.scheduleAiResponse(tenantId, conversation.id);
+    } catch (error) {
+      this.logger.error(
+        `❌ Error procesando mensaje entrante: ${(error as Error).message}`,
+        (error as Error).stack,
+      );
+      throw error;
     }
   }
 
-  private async processWithAi(
+  private async scheduleAiResponse(
     tenantId: string,
     conversationId: string,
-    messageId: string,
-    content: string,
   ): Promise<void> {
-    try {
-      const aiResponse = await this.aiEngineService.processMessage(
-        tenantId,
+    const context = await this.aiContextService.getActiveContext(tenantId);
+
+    const debounceSeconds = context?.debounceSeconds ?? 8;
+    const debounceMaxWaitSeconds = context?.debounceMaxWaitSeconds ?? 60;
+
+    const oldestPending = await this.prisma.message.findFirst({
+      where: {
         conversationId,
-        content,
-      );
+        direction: MessageDirection.INBOUND,
+        aiProcessed: false,
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true },
+    });
 
-      await this.prisma.message.update({
-        where: { id: messageId },
-        data: { aiProcessed: true },
-      });
+    const ageMs = oldestPending
+      ? Date.now() - oldestPending.createdAt.getTime()
+      : 0;
+    const maxWaitMs = debounceMaxWaitSeconds * 1000;
+    const debounceMs = debounceSeconds * 1000;
+    const delay = ageMs >= maxWaitMs ? 0 : debounceMs;
 
-      if (aiResponse) {
-        const outboundMessage = await this.responseDispatcher.dispatch(
-          conversationId,
-          aiResponse,
-        );
+    await this.aiResponseQueue.remove(conversationId).catch(() => undefined);
 
-        await this.actionsService.logAction(
-          tenantId,
-          conversationId,
-          'AI_RESPONSE',
-          { inboundMessageId: messageId, aiResponse },
-          outboundMessage
-            ? { outboundMessageId: outboundMessage.id, status: outboundMessage.status }
-            : null,
-          outboundMessage?.status === 'SENT'
-            ? ActionStatus.SUCCESS
-            : ActionStatus.FAILED,
-        );
-      } else {
-        await this.actionsService.logAction(
-          tenantId,
-          conversationId,
-          'AI_NO_RESPONSE',
-          { inboundMessageId: messageId },
-          null,
-          ActionStatus.SUCCESS,
-        );
-      }
-    } catch (error) {
-      this.logger.error(
-        `AI processing failed for message ${messageId}: ${(error as Error).message}`,
-        (error as Error).stack,
-      );
+    await this.aiResponseQueue.add(
+      'generate',
+      { conversationId },
+      {
+        jobId: conversationId,
+        delay,
+        removeOnComplete: true,
+        removeOnFail: 100,
+      },
+    );
 
-      await this.actionsService.logAction(
-        tenantId,
-        conversationId,
-        'AI_PROCESSING_ERROR',
-        { inboundMessageId: messageId },
-        { error: (error as Error).message },
-        ActionStatus.FAILED,
-        (error as Error).message,
-      );
-    }
+    const seconds = Math.round(delay / 100) / 10;
+    this.logger.log(
+      `⏳ Respuesta IA agendada en ${seconds}s (conv. ${conversationId.slice(0, 8)})`,
+    );
   }
 }

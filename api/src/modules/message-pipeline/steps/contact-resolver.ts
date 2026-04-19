@@ -41,7 +41,7 @@ export class ContactResolver {
     });
 
     this.logger.debug(
-      `Resolved contact ${contact.id} for sender ${normalizedMsg.senderId}`,
+      `👤 Contacto identificado: ${normalizedMsg.senderName ?? normalizedMsg.senderId} (${contact.id.slice(0, 8)})`,
     );
 
     return contact;

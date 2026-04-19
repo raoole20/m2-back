@@ -61,6 +61,7 @@ export class WebhooksController {
   async handleInbound(
     @Param('channelType') channelTypeParam: string,
     @Param('channelId') channelId: string,
+    @Query() query: Record<string, string>,
     @Req() request: Request,
   ): Promise<{ status: string }> {
     const channelType = this.parseChannelType(channelTypeParam);
@@ -84,13 +85,25 @@ export class WebhooksController {
       channelId,
       rawBody,
       headers,
+      query,
     );
 
-    if (result.messages.length > 0) {
-      await this.messageInboundQueue.add('process', result, {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 1000 },
-      });
+    for (const message of result.messages) {
+      await this.messageInboundQueue.add(
+        'process',
+        {
+          message,
+          channelId: result.channelId,
+          tenantId: result.tenantId,
+        },
+        {
+          jobId: `${result.channelId}_${message.externalId}`,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 1000 },
+          removeOnComplete: 1000,
+          removeOnFail: 1000,
+        },
+      );
     }
 
     return { status: 'ok' };

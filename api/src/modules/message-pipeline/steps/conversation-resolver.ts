@@ -26,7 +26,7 @@ export class ConversationResolver {
 
     if (existing) {
       this.logger.debug(
-        `Found active conversation ${existing.id} for contact ${contactId}`,
+        `💬 Conversación activa encontrada (${existing.id.slice(0, 8)})`,
       );
       return existing;
     }
@@ -42,7 +42,7 @@ export class ConversationResolver {
     });
 
     this.logger.log(
-      `Created new conversation ${conversation.id} for contact ${contactId}`,
+      `✨ Nueva conversación creada (${conversation.id.slice(0, 8)})`,
     );
 
     return conversation;

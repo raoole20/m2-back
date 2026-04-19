@@ -20,24 +20,41 @@ export class MessagePersister {
       ? sanitizeContent(normalizedMsg.content)
       : '';
 
-    const message = await this.prisma.message.create({
-      data: {
-        conversationId,
-        channelId,
-        direction: MessageDirection.INBOUND,
-        content: normalizedMsg.content,
-        contentType: normalizedMsg.contentType,
-        mediaUrl: normalizedMsg.mediaUrl,
-        mediaMimeType: normalizedMsg.mediaMimeType,
-        externalId: normalizedMsg.externalId,
-        rawPayload: normalizedMsg.rawPayload as unknown as Prisma.InputJsonValue,
-        sanitizedContent: sanitized,
-        status: MessageStatus.RECEIVED,
+    const createData = {
+      conversationId,
+      channelId,
+      direction: MessageDirection.INBOUND,
+      content: normalizedMsg.content,
+      contentType: normalizedMsg.contentType,
+      mediaUrl: normalizedMsg.mediaUrl,
+      mediaMimeType: normalizedMsg.mediaMimeType,
+      externalId: normalizedMsg.externalId,
+      rawPayload: normalizedMsg.rawPayload as unknown as Prisma.InputJsonValue,
+      sanitizedContent: sanitized,
+      status: MessageStatus.RECEIVED,
+    };
+
+    if (!normalizedMsg.externalId) {
+      const message = await this.prisma.message.create({ data: createData });
+      this.logger.debug(
+        `💾 Mensaje guardado (${message.id.slice(0, 8)})`,
+      );
+      return message;
+    }
+
+    const message = await this.prisma.message.upsert({
+      where: {
+        channelId_externalId: {
+          channelId,
+          externalId: normalizedMsg.externalId,
+        },
       },
+      create: createData,
+      update: {},
     });
 
     this.logger.debug(
-      `Persisted message ${message.id} in conversation ${conversationId}`,
+      `💾 Mensaje guardado (${message.id.slice(0, 8)})`,
     );
 
     return message;

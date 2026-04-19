@@ -51,6 +51,7 @@ export class WebhooksService {
     channelId: string,
     rawBody: Buffer,
     headers: Record<string, string>,
+    query: Record<string, string> = {},
   ): Promise<{
     messages: NormalizedMessage[];
     channelId: string;
@@ -96,6 +97,7 @@ export class WebhooksService {
       channelType,
       channel.provider,
       headers,
+      query,
     );
 
     if (!adapter.validateSignature(rawBody, signature, secret)) {
@@ -117,9 +119,15 @@ export class WebhooksService {
       data: { processed: true },
     });
 
-    this.logger.log(
-      `Processed ${messages.length} message(s) from ${channelType}:${channel.provider} channel ${channel.id}`,
-    );
+    if (messages.length > 0) {
+      this.logger.log(
+        `📡 Webhook ${channelType}:${channel.provider} → ${messages.length} mensaje(s) normalizado(s)`,
+      );
+    } else {
+      this.logger.debug(
+        `📡 Webhook ${channelType}:${channel.provider} → evento ignorado (no es mensaje entrante)`,
+      );
+    }
 
     return {
       messages,
@@ -167,9 +175,10 @@ export class WebhooksService {
     channelType: ChannelType,
     provider: ChannelProvider,
     headers: Record<string, string>,
+    query: Record<string, string> = {},
   ): string {
     if (provider === ChannelProvider.EVOLUTION) {
-      return headers['apikey'] ?? '';
+      return query['token'] ?? headers['apikey'] ?? '';
     }
 
     if (META_PLATFORMS.has(channelType)) {

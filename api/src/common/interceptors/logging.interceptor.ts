@@ -17,8 +17,11 @@ export class LoggingInterceptor implements NestInterceptor {
     const { method, url } = request;
     const start = Date.now();
 
+    const silent = url.startsWith('/webhooks/') || url === '/health';
+
     return next.handle().pipe(
       tap(() => {
+        if (silent) return;
         const response = context.switchToHttp().getResponse();
         const elapsed = Date.now() - start;
         this.logger.log(`${method} ${url} ${response.statusCode} ${elapsed}ms`);

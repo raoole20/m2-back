@@ -1,11 +1,22 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { encrypt } from '../../shared/utils/crypto.util.js';
 import { CreateAiContextDto } from './dto/create-ai-context.dto.js';
 import { UpdateAiContextDto } from './dto/update-ai-context.dto.js';
 
 @Injectable()
 export class AiContextService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
+
+  private encryptApiKey(plain?: string): string | undefined {
+    if (!plain) return undefined;
+    const key = this.config.getOrThrow<string>('ENCRYPTION_KEY');
+    return encrypt(plain, key);
+  }
 
   async create(tenantId: string, dto: CreateAiContextDto) {
     return this.prisma.aiContext.create({
@@ -19,6 +30,10 @@ export class AiContextService {
         model: dto.model ?? 'gpt-4o-mini',
         maxTokens: dto.maxTokens ?? 1000,
         memoryWindowSize: dto.memoryWindowSize ?? 20,
+        debounceSeconds: dto.debounceSeconds ?? 8,
+        debounceMaxWaitSeconds: dto.debounceMaxWaitSeconds ?? 60,
+        apiBaseUrl: dto.apiBaseUrl,
+        apiKey: this.encryptApiKey(dto.apiKey),
         fallbackMessage: dto.fallbackMessage,
       },
     });
@@ -52,9 +67,14 @@ export class AiContextService {
   async update(tenantId: string, id: string, dto: UpdateAiContextDto) {
     await this.findOne(tenantId, id);
 
+    const data: Record<string, unknown> = { ...dto };
+    if (dto.apiKey !== undefined) {
+      data.apiKey = dto.apiKey ? this.encryptApiKey(dto.apiKey) : null;
+    }
+
     return this.prisma.aiContext.update({
       where: { id },
-      data: dto,
+      data,
     });
   }
 

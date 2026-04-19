@@ -18,6 +18,13 @@ export interface EvolutionConnectionState {
   };
 }
 
+export class EvolutionInstanceExistsError extends Error {
+  constructor(public readonly instanceName: string) {
+    super(`Evolution instance "${instanceName}" already exists`);
+    this.name = 'EvolutionInstanceExistsError';
+  }
+}
+
 @Injectable()
 export class EvolutionService {
   private readonly logger = new Logger(EvolutionService.name);
@@ -56,6 +63,9 @@ export class EvolutionService {
 
     if (!response.ok) {
       const error = await response.text();
+      if (response.status === 403 && /already in use/i.test(error)) {
+        throw new EvolutionInstanceExistsError(instanceName);
+      }
       this.logger.error(
         `Failed to create Evolution instance (${response.status}): ${error}`,
       );
@@ -148,7 +158,7 @@ export class EvolutionService {
     }
 
     this.logger.log(
-      `Webhook set for instance ${instanceName} → ${callbackUrl}`,
+      `🔗 Webhook Evolution registrado para "${instanceName}"`,
     );
   }
 
@@ -172,6 +182,6 @@ export class EvolutionService {
       throw new Error(`Evolution API error: ${response.status}`);
     }
 
-    this.logger.log(`Deleted Evolution instance: ${instanceName}`);
+    this.logger.log(`🗑️  Instancia Evolution eliminada: "${instanceName}"`);
   }
 }

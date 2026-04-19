@@ -73,6 +73,12 @@ services:
       - LOG_LEVEL=VERBOSE
     volumes:
       - evolution_instances:/evolution/instances
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:8080/ >/dev/null 2>&1 || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,10 +113,13 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - SWAGGER_ENABLED=${SWAGGER_ENABLED:-true}
       - EVOLUTION_API_URL=${EVOLUTION_API_URL:-http://evolution-api:8080}
+      - LOG_LEVEL=${LOG_LEVEL:-lite}
     volumes:
       - api_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      evolution-api:
         condition: service_healthy

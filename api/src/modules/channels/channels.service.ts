@@ -60,23 +60,24 @@ export class ChannelsService {
     channelId: string,
     credentials: Record<string, string>,
   ): Promise<void> {
-    const { instanceName, apiKey } = credentials;
+    const { instanceName, apiKey, evolutionApiUrl } = credentials;
     if (!instanceName || !apiKey) return;
 
-    const callbackUrl = `http://api:3000/webhooks/whatsapp/${channelId}`;
+    const callbackUrl = `http://api:3000/webhooks/whatsapp/${channelId}?token=${apiKey}`;
 
     try {
       await this.evolutionService.setWebhook(
         instanceName,
         apiKey,
         callbackUrl,
+        evolutionApiUrl,
       );
       this.logger.log(
-        `Evolution webhook configured for channel ${channelId} → ${callbackUrl}`,
+        `🔗 Webhook auto-configurado para canal ${channelId.slice(0, 8)}`,
       );
     } catch (error) {
       this.logger.warn(
-        `Failed to auto-configure Evolution webhook for channel ${channelId}: ${(error as Error).message}. You can configure it manually later.`,
+        `⚠️  Fallo auto-configurando webhook (canal ${channelId.slice(0, 8)}): ${(error as Error).message}`,
       );
     }
   }
