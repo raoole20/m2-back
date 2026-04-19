@@ -35,6 +35,20 @@ export class AiContextService {
         apiBaseUrl: dto.apiBaseUrl,
         apiKey: this.encryptApiKey(dto.apiKey),
         fallbackMessage: dto.fallbackMessage,
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        ...(dto.allowedMediaTypes !== undefined && {
+          allowedMediaTypes: dto.allowedMediaTypes,
+        }),
+        ...(dto.mediaProcessorProvider !== undefined && {
+          mediaProcessorProvider: dto.mediaProcessorProvider,
+        }),
+        mediaProcessorModel: dto.mediaProcessorModel,
+        mediaProcessorApiKey: this.encryptApiKey(dto.mediaProcessorApiKey),
+        mediaProcessorApiBaseUrl: dto.mediaProcessorApiBaseUrl,
+        ...(dto.mediaProcessorFallbackToDefault !== undefined && {
+          mediaProcessorFallbackToDefault: dto.mediaProcessorFallbackToDefault,
+        }),
+        unsupportedMediaMessage: dto.unsupportedMediaMessage,
       },
     });
   }
@@ -71,6 +85,11 @@ export class AiContextService {
     if (dto.apiKey !== undefined) {
       data.apiKey = dto.apiKey ? this.encryptApiKey(dto.apiKey) : null;
     }
+    if (dto.mediaProcessorApiKey !== undefined) {
+      data.mediaProcessorApiKey = dto.mediaProcessorApiKey
+        ? this.encryptApiKey(dto.mediaProcessorApiKey)
+        : null;
+    }
 
     return this.prisma.aiContext.update({
       where: { id },
@@ -81,9 +100,8 @@ export class AiContextService {
   async remove(tenantId: string, id: string) {
     await this.findOne(tenantId, id);
 
-    return this.prisma.aiContext.update({
+    return this.prisma.aiContext.delete({
       where: { id },
-      data: { isActive: false },
     });
   }
 

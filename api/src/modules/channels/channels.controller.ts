@@ -74,8 +74,8 @@ export class ChannelsController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Soft-delete a channel (set isActive=false)' })
-  @ApiResponse({ status: 200, description: 'Channel deactivated successfully' })
+  @ApiOperation({ summary: 'Soft-delete a channel (set deletedAt)' })
+  @ApiResponse({ status: 200, description: 'Channel deleted successfully' })
   @ApiResponse({ status: 404, description: 'Channel not found' })
   async remove(
     @CurrentTenant() tenantId: string,

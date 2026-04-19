@@ -4,12 +4,14 @@ import {
   IsOptional,
   IsEnum,
   IsInt,
+  IsBoolean,
+  IsArray,
   Min,
   Max,
   MinLength,
   MaxLength,
 } from 'class-validator';
-import { AiProvider } from '@prisma/client';
+import { AiProvider, ContentType } from '@prisma/client';
 
 export class CreateAiContextDto {
   @ApiProperty({ description: 'Context name', example: 'Customer Support Bot' })
@@ -91,4 +93,76 @@ export class CreateAiContextDto {
   @IsString()
   @MaxLength(1000)
   fallbackMessage?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether the AI context is active (enabled for use). Use DELETE endpoint to remove it instead.',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Tipos de mensaje que este contexto acepta procesar. Si llega un tipo no incluido, se marca como SKIPPED.',
+    enum: ContentType,
+    isArray: true,
+    default: [ContentType.TEXT],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsEnum(ContentType, { each: true })
+  allowedMediaTypes?: ContentType[];
+
+  @ApiPropertyOptional({
+    enum: AiProvider,
+    description: 'Proveedor IA para transcribir/describir media (audio, imagen, video, documento)',
+    default: AiProvider.GEMINI,
+  })
+  @IsOptional()
+  @IsEnum(AiProvider)
+  mediaProcessorProvider?: AiProvider;
+
+  @ApiPropertyOptional({
+    description: 'Modelo específico para media processing. Si null, usa el default del provider.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  mediaProcessorModel?: string;
+
+  @ApiPropertyOptional({
+    description: 'API key override para media processing (se encripta al persistir).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  mediaProcessorApiKey?: string;
+
+  @ApiPropertyOptional({
+    description: 'Base URL (sólo si mediaProcessorProvider=CUSTOM).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  mediaProcessorApiBaseUrl?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Si el provider elegido no soporta el tipo recibido, hacer fallback a Gemini automáticamente.',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  mediaProcessorFallbackToDefault?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Mensaje enviado al usuario cuando todos los mensajes entrantes son de tipos no permitidos (SKIPPED). Si null, no se responde.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  unsupportedMediaMessage?: string;
 }

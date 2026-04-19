@@ -1,0 +1,497 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "M2 API",
+    "description": "Centralized AI communications platform",
+    "version": "0.1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [
+    { "url": "http://localhost:3000", "description": "Local dev" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearer": { "scheme": "bearer", "bearerFormat": "JWT", "type": "http" }
+    },
+    "schemas": {
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "tenantName": { "type": "string", "description": "Name of the tenant/organization", "example": "Acme Corp" },
+          "tenantSlug": { "type": "string", "description": "URL-friendly slug for the tenant (lowercase, no spaces)", "example": "acme-corp" },
+          "email": { "type": "string", "description": "Email address for the owner account", "example": "owner@acme.com" },
+          "password": { "type": "string", "description": "Password (minimum 8 characters)", "example": "Str0ngP@ss", "minLength": 8 },
+          "name": { "type": "string", "description": "Full name of the owner", "example": "John Doe" }
+        },
+        "required": ["tenantName", "tenantSlug", "email", "password", "name"]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string", "description": "Email address", "example": "owner@acme.com" },
+          "password": { "type": "string", "description": "Account password", "example": "Str0ngP@ss" }
+        },
+        "required": ["email", "password"]
+      },
+      "RefreshDto": {
+        "type": "object",
+        "properties": {
+          "refreshToken": { "type": "string", "description": "Refresh token obtained during login or registration" }
+        },
+        "required": ["refreshToken"]
+      },
+      "UpdateTenantDto": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Tenant display name", "maxLength": 255 },
+          "settings": { "type": "object", "description": "Tenant settings as a JSON object", "additionalProperties": true }
+        }
+      },
+      "CreateChannelDto": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["WHATSAPP", "INSTAGRAM", "MESSENGER", "TELEGRAM", "WEBCHAT"], "description": "Channel type" },
+          "provider": { "type": "string", "enum": ["META", "EVOLUTION"], "description": "Channel provider (META for Cloud API, EVOLUTION for Evolution API)", "default": "META" },
+          "name": { "type": "string", "description": "Channel display name", "maxLength": 255 },
+          "credentials": { "type": "object", "description": "Channel credentials (provider-specific)", "additionalProperties": true },
+          "isActive": { "type": "boolean", "description": "Whether the channel is active (enabled for use). Use DELETE endpoint to remove it.", "default": true }
+        },
+        "required": ["type", "name", "credentials"]
+      },
+      "UpdateChannelDto": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["WHATSAPP", "INSTAGRAM", "MESSENGER", "TELEGRAM", "WEBCHAT"], "description": "Channel type" },
+          "provider": { "type": "string", "enum": ["META", "EVOLUTION"], "description": "Channel provider", "default": "META" },
+          "name": { "type": "string", "description": "Channel display name", "maxLength": 255 },
+          "credentials": { "type": "object", "description": "Channel credentials (provider-specific)", "additionalProperties": true },
+          "isActive": { "type": "boolean", "description": "Toggle active/inactive state. Does NOT delete — use DELETE for soft-delete." }
+        }
+      },
+      "UpdateContactDto": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Contact name", "maxLength": 255 },
+          "phone": { "type": "string", "description": "Phone number" },
+          "email": { "type": "string", "description": "Email address" },
+          "tags": { "description": "Tags for categorization", "type": "array", "items": { "type": "string" } },
+          "metadata": { "type": "object", "description": "Additional metadata", "additionalProperties": true }
+        }
+      },
+      "UpdateConversationDto": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["ACTIVE", "WAITING_HUMAN", "CLOSED", "ARCHIVED"], "description": "Conversation status" },
+          "assignedToId": { "type": "string", "description": "Assigned agent ID (null to unassign)", "nullable": true },
+          "aiEnabled": { "type": "boolean", "description": "Whether AI is enabled for this conversation" }
+        }
+      },
+      "CreateAiContextDto": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "Context name", "example": "Customer Support Bot" },
+          "systemPrompt": { "type": "string", "description": "System prompt for the AI", "example": "You are a helpful assistant..." },
+          "personality": { "type": "string", "description": "AI personality description" },
+          "language": { "type": "string", "description": "Response language", "default": "es" },
+          "provider": { "type": "string", "enum": ["OPENAI", "ANTHROPIC", "GEMINI", "CUSTOM"], "description": "AI provider", "default": "OPENAI" },
+          "model": { "type": "string", "description": "AI model identifier", "default": "gpt-4o-mini" },
+          "maxTokens": { "type": "number", "description": "Max tokens per response", "default": 1000, "minimum": 100, "maximum": 4000 },
+          "memoryWindowSize": { "type": "number", "description": "Memory window size (number of entries)", "default": 20, "minimum": 5, "maximum": 50 },
+          "debounceSeconds": { "type": "number", "description": "Debounce seconds before AI responds", "default": 8, "minimum": 1, "maximum": 300 },
+          "debounceMaxWaitSeconds": { "type": "number", "description": "Max seconds to wait before forced AI response", "default": 60, "minimum": 5, "maximum": 600 },
+          "apiBaseUrl": { "type": "string", "description": "Custom base URL for OpenAI-compatible gateway" },
+          "apiKey": { "type": "string", "description": "Override API key (stored encrypted). If empty, uses env var." },
+          "fallbackMessage": { "type": "string", "description": "Fallback message when AI fails" },
+          "isActive": { "type": "boolean", "description": "Whether the AI context is active (enabled for use). Use DELETE to soft-delete.", "default": true },
+          "allowedMediaTypes": {
+            "type": "array",
+            "description": "Tipos de mensaje que este contexto acepta procesar. Los tipos no incluidos se marcan como SKIPPED.",
+            "default": ["TEXT"],
+            "items": { "type": "string", "enum": ["TEXT", "IMAGE", "AUDIO", "VIDEO", "DOCUMENT", "LOCATION", "STICKER", "REACTION", "TEMPLATE"] }
+          },
+          "mediaProcessorProvider": { "type": "string", "enum": ["OPENAI", "ANTHROPIC", "GEMINI", "CUSTOM"], "description": "Proveedor IA para transcribir/describir media (audio, imagen, video, documento)", "default": "GEMINI" },
+          "mediaProcessorModel": { "type": "string", "description": "Modelo específico para media processing. Si null, usa el default del provider." },
+          "mediaProcessorApiKey": { "type": "string", "description": "API key override para media processing (se encripta al persistir)." },
+          "mediaProcessorApiBaseUrl": { "type": "string", "description": "Base URL (sólo si mediaProcessorProvider=CUSTOM)." },
+          "mediaProcessorFallbackToDefault": { "type": "boolean", "description": "Si el provider elegido no soporta el tipo recibido, hacer fallback a Gemini automáticamente.", "default": true },
+          "unsupportedMediaMessage": { "type": "string", "description": "Mensaje enviado al usuario cuando todos los mensajes entrantes son de tipos no permitidos (SKIPPED). Si null, no se responde." }
+        },
+        "required": ["name", "systemPrompt"]
+      },
+      "UpdateAiContextDto": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "systemPrompt": { "type": "string" },
+          "personality": { "type": "string" },
+          "language": { "type": "string", "default": "es" },
+          "provider": { "type": "string", "enum": ["OPENAI", "ANTHROPIC", "GEMINI", "CUSTOM"], "default": "OPENAI" },
+          "model": { "type": "string" },
+          "maxTokens": { "type": "number", "minimum": 100, "maximum": 4000 },
+          "memoryWindowSize": { "type": "number", "minimum": 5, "maximum": 50 },
+          "debounceSeconds": { "type": "number", "minimum": 1, "maximum": 300 },
+          "debounceMaxWaitSeconds": { "type": "number", "minimum": 5, "maximum": 600 },
+          "apiBaseUrl": { "type": "string" },
+          "apiKey": { "type": "string" },
+          "fallbackMessage": { "type": "string" },
+          "isActive": { "type": "boolean", "description": "Toggle active/inactive state. Does NOT delete — use DELETE for soft-delete." },
+          "allowedMediaTypes": { "type": "array", "items": { "type": "string", "enum": ["TEXT", "IMAGE", "AUDIO", "VIDEO", "DOCUMENT", "LOCATION", "STICKER", "REACTION", "TEMPLATE"] } },
+          "mediaProcessorProvider": { "type": "string", "enum": ["OPENAI", "ANTHROPIC", "GEMINI", "CUSTOM"] },
+          "mediaProcessorModel": { "type": "string" },
+          "mediaProcessorApiKey": { "type": "string" },
+          "mediaProcessorApiBaseUrl": { "type": "string" },
+          "mediaProcessorFallbackToDefault": { "type": "boolean" },
+          "unsupportedMediaMessage": { "type": "string" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "HealthController_check",
+        "summary": "Health check endpoint",
+        "tags": ["Health"],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "summary": "Register a new tenant and owner account",
+        "tags": ["Auth"],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterDto" } } } },
+        "responses": { "201": { "description": "Tenant and user created successfully" }, "409": { "description": "Tenant slug already exists" } }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "summary": "Authenticate with email and password",
+        "tags": ["Auth"],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginDto" } } } },
+        "responses": { "200": { "description": "Returns access and refresh tokens" }, "401": { "description": "Invalid credentials" } }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "summary": "Refresh access token using a refresh token",
+        "tags": ["Auth"],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefreshDto" } } } },
+        "responses": { "200": { "description": "Returns new access and refresh tokens" }, "401": { "description": "Invalid or expired refresh token" } }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "AuthController_getProfile",
+        "summary": "Get current authenticated user profile",
+        "tags": ["Auth"],
+        "security": [{ "bearer": [] }],
+        "responses": { "200": { "description": "Returns user profile with tenant info" }, "401": { "description": "Not authenticated" } }
+      }
+    },
+    "/api/tenants/me": {
+      "get": {
+        "operationId": "TenantsController_getMyTenant",
+        "summary": "Get current tenant info",
+        "tags": ["Tenants"],
+        "security": [{ "bearer": [] }],
+        "responses": { "200": { "description": "Tenant retrieved successfully" } }
+      },
+      "patch": {
+        "operationId": "TenantsController_updateMyTenant",
+        "summary": "Update current tenant (OWNER only)",
+        "tags": ["Tenants"],
+        "security": [{ "bearer": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateTenantDto" } } } },
+        "responses": { "200": { "description": "Tenant updated successfully" }, "403": { "description": "Insufficient permissions" } }
+      }
+    },
+    "/api/channels": {
+      "post": {
+        "operationId": "ChannelsController_create",
+        "summary": "Create a new channel",
+        "tags": ["Channels"],
+        "security": [{ "bearer": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateChannelDto" } } } },
+        "responses": { "201": { "description": "Channel created successfully" } }
+      },
+      "get": {
+        "operationId": "ChannelsController_findAll",
+        "summary": "List all channels (paginated, excludes soft-deleted)",
+        "tags": ["Channels"],
+        "security": [{ "bearer": [] }],
+        "parameters": [
+          { "name": "page", "required": false, "in": "query", "schema": { "minimum": 1, "default": 1, "type": "number" } },
+          { "name": "limit", "required": false, "in": "query", "schema": { "minimum": 1, "maximum": 100, "default": 20, "type": "number" } },
+          { "name": "sortBy", "required": false, "in": "query", "schema": { "type": "string" } },
+          { "name": "sortOrder", "required": false, "in": "query", "schema": { "default": "desc", "type": "string", "enum": ["asc", "desc"] } }
+        ],
+        "responses": { "200": { "description": "Channels retrieved successfully" } }
+      }
+    },
+    "/api/channels/{id}": {
+      "get": {
+        "operationId": "ChannelsController_findOne",
+        "summary": "Get a single channel with decrypted credentials",
+        "tags": ["Channels"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Channel retrieved successfully" }, "404": { "description": "Channel not found (or soft-deleted)" } }
+      },
+      "patch": {
+        "operationId": "ChannelsController_update",
+        "summary": "Update a channel (including isActive toggle)",
+        "tags": ["Channels"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateChannelDto" } } } },
+        "responses": { "200": { "description": "Channel updated successfully" }, "404": { "description": "Channel not found" } }
+      },
+      "delete": {
+        "operationId": "ChannelsController_remove",
+        "summary": "Soft-delete a channel (set deletedAt)",
+        "tags": ["Channels"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Channel deleted successfully" }, "404": { "description": "Channel not found" } }
+      }
+    },
+    "/api/channels/{channelId}/evolution/connect": {
+      "post": {
+        "operationId": "EvolutionController_connect",
+        "summary": "Create Evolution instance (or reuse existing) and return QR/state",
+        "tags": ["Evolution"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "channelId", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "201": { "description": "Instance ensured; webhook registered; QR or connection state returned" }, "400": { "description": "Channel is not an Evolution provider" } }
+      }
+    },
+    "/api/channels/{channelId}/evolution/qr": {
+      "get": {
+        "operationId": "EvolutionController_getQrCode",
+        "summary": "Get current QR code for WhatsApp connection",
+        "tags": ["Evolution"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "channelId", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "QR code data returned" }, "400": { "description": "Channel is not an Evolution provider" } }
+      }
+    },
+    "/api/channels/{channelId}/evolution/status": {
+      "get": {
+        "operationId": "EvolutionController_getStatus",
+        "summary": "Get Evolution instance connection status",
+        "tags": ["Evolution"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "channelId", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Connection status returned" }, "400": { "description": "Channel is not an Evolution provider" } }
+      }
+    },
+    "/api/channels/{channelId}/evolution/sync-contacts": {
+      "post": {
+        "operationId": "EvolutionController_syncContacts",
+        "summary": "Sync contacts from paired device phonebook",
+        "tags": ["Evolution"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "channelId", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Contacts synchronized" }, "400": { "description": "Channel is not an Evolution provider" } }
+      }
+    },
+    "/api/contacts": {
+      "get": {
+        "operationId": "ContactsController_findAll",
+        "summary": "List contacts with search and filters",
+        "tags": ["Contacts"],
+        "security": [{ "bearer": [] }],
+        "parameters": [
+          { "name": "page", "required": false, "in": "query", "schema": { "minimum": 1, "default": 1, "type": "number" } },
+          { "name": "limit", "required": false, "in": "query", "schema": { "minimum": 1, "maximum": 100, "default": 20, "type": "number" } },
+          { "name": "sortBy", "required": false, "in": "query", "schema": { "type": "string" } },
+          { "name": "sortOrder", "required": false, "in": "query", "schema": { "default": "desc", "type": "string", "enum": ["asc", "desc"] } },
+          { "name": "search", "required": false, "in": "query", "description": "Search by name, phone, or email", "schema": { "type": "string" } },
+          { "name": "channelType", "required": false, "in": "query", "description": "Filter by channel type", "schema": { "type": "string", "enum": ["WHATSAPP", "INSTAGRAM", "MESSENGER", "TELEGRAM", "WEBCHAT"] } }
+        ],
+        "responses": { "200": { "description": "Contacts retrieved successfully" } }
+      }
+    },
+    "/api/contacts/{id}": {
+      "get": {
+        "operationId": "ContactsController_findOne",
+        "summary": "Get a single contact with conversation count",
+        "tags": ["Contacts"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Contact retrieved successfully" }, "404": { "description": "Contact not found" } }
+      },
+      "patch": {
+        "operationId": "ContactsController_update",
+        "summary": "Update a contact",
+        "tags": ["Contacts"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateContactDto" } } } },
+        "responses": { "200": { "description": "Contact updated successfully" }, "404": { "description": "Contact not found" } }
+      },
+      "delete": {
+        "operationId": "ContactsController_remove",
+        "summary": "Delete a contact permanently",
+        "tags": ["Contacts"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Contact deleted successfully" }, "404": { "description": "Contact not found" } }
+      }
+    },
+    "/api/conversations": {
+      "get": {
+        "operationId": "ConversationsController_findAll",
+        "summary": "List conversations with filters",
+        "tags": ["Conversations"],
+        "security": [{ "bearer": [] }],
+        "parameters": [
+          { "name": "page", "required": false, "in": "query", "schema": { "minimum": 1, "default": 1, "type": "number" } },
+          { "name": "limit", "required": false, "in": "query", "schema": { "minimum": 1, "maximum": 100, "default": 20, "type": "number" } },
+          { "name": "sortBy", "required": false, "in": "query", "schema": { "type": "string" } },
+          { "name": "sortOrder", "required": false, "in": "query", "schema": { "default": "desc", "type": "string", "enum": ["asc", "desc"] } },
+          { "name": "status", "required": false, "in": "query", "description": "Filter by status", "schema": { "type": "string", "enum": ["ACTIVE", "WAITING_HUMAN", "CLOSED", "ARCHIVED"] } },
+          { "name": "channelId", "required": false, "in": "query", "description": "Filter by channel ID", "schema": { "type": "string" } },
+          { "name": "assignedToId", "required": false, "in": "query", "description": "Filter by assigned agent ID", "schema": { "type": "string" } },
+          { "name": "contactId", "required": false, "in": "query", "description": "Filter by contact ID", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Conversations retrieved successfully" } }
+      }
+    },
+    "/api/conversations/{id}": {
+      "get": {
+        "operationId": "ConversationsController_findOne",
+        "summary": "Get conversation detail with contact, channel, and recent messages",
+        "tags": ["Conversations"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Conversation retrieved successfully" }, "404": { "description": "Conversation not found" } }
+      },
+      "patch": {
+        "operationId": "ConversationsController_update",
+        "summary": "Update conversation status, assignment, or AI setting",
+        "tags": ["Conversations"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateConversationDto" } } } },
+        "responses": { "200": { "description": "Conversation updated successfully" }, "404": { "description": "Conversation not found" } }
+      }
+    },
+    "/api/conversations/{id}/close": {
+      "post": {
+        "operationId": "ConversationsController_close",
+        "summary": "Close a conversation",
+        "tags": ["Conversations"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Conversation closed successfully" }, "404": { "description": "Conversation not found" } }
+      }
+    },
+    "/api/messages": {
+      "get": {
+        "operationId": "MessagesController_findAll",
+        "summary": "List messages for a conversation",
+        "tags": ["Messages"],
+        "security": [{ "bearer": [] }],
+        "parameters": [
+          { "name": "page", "required": false, "in": "query", "schema": { "minimum": 1, "default": 1, "type": "number" } },
+          { "name": "limit", "required": false, "in": "query", "schema": { "minimum": 1, "maximum": 100, "default": 20, "type": "number" } },
+          { "name": "sortBy", "required": false, "in": "query", "schema": { "type": "string" } },
+          { "name": "sortOrder", "required": false, "in": "query", "schema": { "default": "desc", "type": "string", "enum": ["asc", "desc"] } },
+          { "name": "conversationId", "required": true, "in": "query", "description": "Conversation ID (required)", "schema": { "type": "string" } },
+          { "name": "direction", "required": false, "in": "query", "description": "Filter by direction", "schema": { "type": "string", "enum": ["INBOUND", "OUTBOUND"] } },
+          { "name": "contentType", "required": false, "in": "query", "description": "Filter by content type", "schema": { "type": "string", "enum": ["TEXT", "IMAGE", "AUDIO", "VIDEO", "DOCUMENT", "LOCATION", "STICKER", "REACTION", "TEMPLATE"] } },
+          { "name": "startDate", "required": false, "in": "query", "description": "Start date (ISO 8601)", "schema": { "example": "2025-01-01T00:00:00Z", "type": "string" } },
+          { "name": "endDate", "required": false, "in": "query", "description": "End date (ISO 8601)", "schema": { "example": "2025-12-31T23:59:59Z", "type": "string" } }
+        ],
+        "responses": { "200": { "description": "Messages retrieved successfully" }, "404": { "description": "Conversation not found" } }
+      }
+    },
+    "/api/messages/{id}": {
+      "get": {
+        "operationId": "MessagesController_findOne",
+        "summary": "Get a single message",
+        "tags": ["Messages"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Message retrieved successfully" }, "404": { "description": "Message not found" } }
+      }
+    },
+    "/api/ai-contexts": {
+      "post": {
+        "operationId": "AiContextController_create",
+        "summary": "Create a new AI context",
+        "tags": ["AI Contexts"],
+        "security": [{ "bearer": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateAiContextDto" } } } },
+        "responses": { "201": { "description": "AI Context created successfully" } }
+      },
+      "get": {
+        "operationId": "AiContextController_findAll",
+        "summary": "List all AI contexts with file count",
+        "tags": ["AI Contexts"],
+        "security": [{ "bearer": [] }],
+        "responses": { "200": { "description": "AI Contexts retrieved successfully" } }
+      }
+    },
+    "/api/ai-contexts/{id}": {
+      "get": {
+        "operationId": "AiContextController_findOne",
+        "summary": "Get an AI context with context files",
+        "tags": ["AI Contexts"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "AI Context retrieved successfully" }, "404": { "description": "AI Context not found" } }
+      },
+      "patch": {
+        "operationId": "AiContextController_update",
+        "summary": "Update an AI context (including isActive toggle)",
+        "tags": ["AI Contexts"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateAiContextDto" } } } },
+        "responses": { "200": { "description": "AI Context updated successfully" }, "404": { "description": "AI Context not found" } }
+      },
+      "delete": {
+        "operationId": "AiContextController_remove",
+        "summary": "Soft-delete an AI context (set deletedAt)",
+        "tags": ["AI Contexts"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "AI Context deleted successfully" }, "404": { "description": "AI Context not found" } }
+      }
+    },
+    "/api/actions": {
+      "get": {
+        "operationId": "ActionsController_findAll",
+        "summary": "List action logs (paginated)",
+        "tags": ["Actions"],
+        "security": [{ "bearer": [] }],
+        "parameters": [
+          { "name": "page", "required": false, "in": "query", "schema": { "minimum": 1, "default": 1, "type": "number" } },
+          { "name": "limit", "required": false, "in": "query", "schema": { "minimum": 1, "maximum": 100, "default": 20, "type": "number" } },
+          { "name": "sortBy", "required": false, "in": "query", "schema": { "type": "string" } },
+          { "name": "sortOrder", "required": false, "in": "query", "schema": { "default": "desc", "type": "string", "enum": ["asc", "desc"] } },
+          { "name": "actionType", "required": false, "in": "query", "description": "Filter by action type", "schema": { "type": "string" } },
+          { "name": "conversationId", "required": false, "in": "query", "description": "Filter by conversation ID", "schema": { "type": "string" } },
+          { "name": "status", "required": false, "in": "query", "description": "Filter by status", "schema": { "type": "string", "enum": ["PENDING", "SUCCESS", "FAILED"] } }
+        ],
+        "responses": { "200": { "description": "Actions retrieved successfully" } }
+      }
+    },
+    "/api/actions/conversation/{conversationId}": {
+      "get": {
+        "operationId": "ActionsController_findByConversation",
+        "summary": "Get all actions for a conversation",
+        "tags": ["Actions"],
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "conversationId", "required": true, "in": "path", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Conversation actions retrieved successfully" } }
+      }
+    }
+  }
+}

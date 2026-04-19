@@ -18,6 +18,15 @@ export interface EvolutionConnectionState {
   };
 }
 
+export interface EvolutionContact {
+  id: string;
+  remoteJid?: string;
+  pushName?: string | null;
+  name?: string | null;
+  profilePicUrl?: string | null;
+  instanceId?: string;
+}
+
 export class EvolutionInstanceExistsError extends Error {
   constructor(public readonly instanceName: string) {
     super(`Evolution instance "${instanceName}" already exists`);
@@ -160,6 +169,34 @@ export class EvolutionService {
     this.logger.log(
       `🔗 Webhook Evolution registrado para "${instanceName}"`,
     );
+  }
+
+  async findContacts(
+    instanceName: string,
+    apiKey: string,
+    baseUrl?: string,
+  ): Promise<EvolutionContact[]> {
+    const url = `${this.getBaseUrl(baseUrl)}/chat/findContacts/${instanceName}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        apikey: apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ where: {} }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      this.logger.error(
+        `Failed to find Evolution contacts (${response.status}): ${error}`,
+      );
+      throw new Error(`Evolution API error: ${response.status}`);
+    }
+
+    const data = (await response.json()) as EvolutionContact[];
+    return Array.isArray(data) ? data : [];
   }
 
   async deleteInstance(

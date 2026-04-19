@@ -72,6 +72,10 @@ export class EvolutionController {
       baseUrl,
     );
 
+    this.channelsService
+      .syncEvolutionContacts(tenantId, channelId)
+      .catch(() => undefined);
+
     return result;
   }
 
@@ -113,6 +117,17 @@ export class EvolutionController {
     );
 
     return result;
+  }
+
+  @Post(':channelId/evolution/sync-contacts')
+  @ApiOperation({ summary: 'Sync contacts from paired device phonebook' })
+  @ApiResponse({ status: 200, description: 'Contacts synchronized' })
+  @ApiResponse({ status: 400, description: 'Channel is not an Evolution provider' })
+  async syncContacts(
+    @CurrentTenant() tenantId: string,
+    @Param('channelId') channelId: string,
+  ): Promise<{ imported: number; updated: number; total: number }> {
+    return this.channelsService.syncEvolutionContacts(tenantId, channelId);
   }
 
   private async getEvolutionCredentials(

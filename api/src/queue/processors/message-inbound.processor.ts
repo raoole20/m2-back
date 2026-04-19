@@ -1,6 +1,6 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { MessageDirection } from '@prisma/client';
+import { ContentType, MessageDirection } from '@prisma/client';
 import { Job, Queue } from 'bullmq';
 
 import { PrismaService } from '../../prisma/prisma.service.js';
@@ -8,6 +8,7 @@ import { ContactResolver } from '../../modules/message-pipeline/steps/contact-re
 import { ConversationResolver } from '../../modules/message-pipeline/steps/conversation-resolver.js';
 import { MessagePersister } from '../../modules/message-pipeline/steps/message-persister.js';
 import { AiContextService } from '../../modules/ai-context/ai-context.service.js';
+import { MediaProcessorService } from '../../modules/media-processor/media-processor.service.js';
 import { NormalizedMessage } from '../../common/interfaces/normalized-message.interface.js';
 
 interface InboundJobData {
@@ -26,6 +27,7 @@ export class MessageInboundProcessor extends WorkerHost {
     private readonly conversationResolver: ConversationResolver,
     private readonly messagePersister: MessagePersister,
     private readonly aiContextService: AiContextService,
+    private readonly mediaProcessor: MediaProcessorService,
     @InjectQueue('ai-response') private readonly aiResponseQueue: Queue,
   ) {
     super();
@@ -60,6 +62,11 @@ export class MessageInboundProcessor extends WorkerHost {
       if (!conversation.aiEnabled) {
         this.logger.log(`🚫 IA deshabilitada en conversación, omitiendo`);
         return;
+      }
+
+      if (message.contentType !== ContentType.TEXT) {
+        const aiContext = await this.aiContextService.getActiveContext(tenantId);
+        await this.mediaProcessor.process(message.id, aiContext);
       }
 
       await this.scheduleAiResponse(tenantId, conversation.id);

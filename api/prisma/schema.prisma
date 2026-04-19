@@ -18,6 +18,7 @@ model Tenant {
   plan        Plan     @default(FREE)
   isActive    Boolean  @default(true)
   settings    Json?
+  deletedAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -28,6 +29,7 @@ model Tenant {
   aiContexts    AiContext[]
   contextFiles  ContextFile[]
 
+  @@index([deletedAt])
   @@map("tenants")
 }
 
@@ -50,6 +52,7 @@ model User {
   name         String
   role         UserRole @default(AGENT)
   isActive     Boolean  @default(true)
+  deletedAt    DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -57,6 +60,7 @@ model User {
   assignedConversations Conversation[] @relation("AssignedAgent")
 
   @@unique([tenantId, email])
+  @@index([tenantId, deletedAt])
   @@map("users")
 }
 
@@ -80,6 +84,7 @@ model Channel {
   webhookSecret String?
   isActive     Boolean       @default(true)
   metadata     Json?
+  deletedAt    DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -89,6 +94,7 @@ model Channel {
 
   @@unique([tenantId, type, provider, name])
   @@index([tenantId, type])
+  @@index([tenantId, deletedAt])
   @@map("channels")
 }
 
@@ -179,24 +185,27 @@ enum ConversationStatus {
 // =====================================================
 
 model Message {
-  id               String        @id @default(uuid())
-  conversationId   String
-  channelId        String
-  direction        MessageDirection
-  content          String
-  contentType      ContentType   @default(TEXT)
-  mediaUrl         String?
-  mediaMimeType    String?
-  externalId       String?
-  replyToId        String?
-  rawPayload       Json?
-  sanitizedContent String?
-  metadata         Json?
-  status           MessageStatus @default(RECEIVED)
-  aiProcessed      Boolean       @default(false)
-  errorMessage     String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  id                    String        @id @default(uuid())
+  conversationId        String
+  channelId             String
+  direction             MessageDirection
+  content               String
+  contentType           ContentType   @default(TEXT)
+  mediaUrl              String?
+  mediaMimeType         String?
+  transcription         String?
+  mediaProcessingStatus MediaProcessingStatus @default(PENDING)
+  mediaProcessingError  String?
+  externalId            String?
+  replyToId             String?
+  rawPayload            Json?
+  sanitizedContent      String?
+  metadata              Json?
+  status                MessageStatus @default(RECEIVED)
+  aiProcessed           Boolean       @default(false)
+  errorMessage          String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
   conversation     Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   channel          Channel       @relation(fields: [channelId], references: [id])
@@ -236,6 +245,14 @@ enum MessageStatus {
   FAILED
 }
 
+enum MediaProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  SKIPPED
+  FAILED
+}
+
 // =====================================================
 // CONTEXTO DE IA
 // =====================================================
@@ -257,7 +274,15 @@ model AiContext {
   apiKey          String?
   isActive        Boolean  @default(true)
   fallbackMessage String?
+  allowedMediaTypes               ContentType[] @default([TEXT])
+  mediaProcessorProvider          AiProvider    @default(GEMINI)
+  mediaProcessorModel             String?
+  mediaProcessorApiKey            String?
+  mediaProcessorApiBaseUrl        String?
+  mediaProcessorFallbackToDefault Boolean       @default(true)
+  unsupportedMediaMessage         String?
   metadata        Json?
+  deletedAt       DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -265,6 +290,7 @@ model AiContext {
   contextFiles    ContextFile[]
 
   @@index([tenantId, isActive])
+  @@index([tenantId, deletedAt])
   @@map("ai_contexts")
 }
 

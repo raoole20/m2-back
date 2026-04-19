@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ChannelProvider } from '@prisma/client';
+import { ChannelProvider, ChannelType } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { encrypt, decrypt } from '../../shared/utils/crypto.util.js';
@@ -158,9 +158,83 @@ export class ChannelsService {
   async remove(tenantId: string, id: string) {
     await this.findOne(tenantId, id);
 
-    return this.prisma.channel.update({
+    return this.prisma.channel.delete({
       where: { id },
-      data: { isActive: false },
     });
+  }
+
+  async syncEvolutionContacts(
+    tenantId: string,
+    channelId: string,
+  ): Promise<{ imported: number; updated: number; total: number }> {
+    const channel = await this.findOne(tenantId, channelId);
+
+    if (channel.provider !== ChannelProvider.EVOLUTION) {
+      throw new NotFoundException(
+        'Channel is not an Evolution provider',
+      );
+    }
+
+    const credentials = channel.credentials as Record<string, string>;
+    const { instanceName, apiKey, evolutionApiUrl } = credentials;
+
+    if (!instanceName || !apiKey) {
+      throw new NotFoundException(
+        'Channel credentials missing instanceName/apiKey',
+      );
+    }
+
+    const contacts = await this.evolutionService.findContacts(
+      instanceName,
+      apiKey,
+      evolutionApiUrl,
+    );
+
+    let imported = 0;
+    let updated = 0;
+
+    for (const c of contacts) {
+      const jid = c.remoteJid ?? c.id;
+      if (!jid || jid.endsWith('@g.us') || jid.endsWith('@broadcast')) continue;
+
+      const phone = jid.replace(/@s\.whatsapp\.net$/, '');
+      if (!phone || !/^\d+$/.test(phone)) continue;
+
+      const displayName = c.name?.trim() || c.pushName?.trim() || null;
+
+      const result = await this.prisma.contact.upsert({
+        where: {
+          tenantId_externalId_channelType: {
+            tenantId,
+            externalId: phone,
+            channelType: ChannelType.WHATSAPP,
+          },
+        },
+        create: {
+          tenantId,
+          externalId: phone,
+          channelType: ChannelType.WHATSAPP,
+          name: displayName,
+          phone,
+          avatarUrl: c.profilePicUrl ?? undefined,
+        },
+        update: {
+          ...(displayName && { name: displayName }),
+          ...(c.profilePicUrl && { avatarUrl: c.profilePicUrl }),
+        },
+      });
+
+      if (result.createdAt.getTime() === result.updatedAt.getTime()) {
+        imported += 1;
+      } else {
+        updated += 1;
+      }
+    }
+
+    this.logger.log(
+      `📇 Sincronización de contactos completada: ${imported} nuevo(s), ${updated} actualizado(s), total ${contacts.length}`,
+    );
+
+    return { imported, updated, total: contacts.length };
   }
 }

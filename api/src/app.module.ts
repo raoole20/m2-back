@@ -15,6 +15,7 @@ import { AiMemoryModule } from './modules/ai-memory/ai-memory.module.js';
 import { AiEngineModule } from './modules/ai-engine/ai-engine.module.js';
 import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
 import { MessagePipelineModule } from './modules/message-pipeline/message-pipeline.module.js';
+import { MediaProcessorModule } from './modules/media-processor/media-processor.module.js';
 import { ResponseDispatcherModule } from './modules/response-dispatcher/response-dispatcher.module.js';
 import { ActionsModule } from './modules/actions/actions.module.js';
 
@@ -39,6 +40,7 @@ import { ActionsModule } from './modules/actions/actions.module.js';
     AiEngineModule,
     WebhooksModule,
     MessagePipelineModule,
+    MediaProcessorModule,
     ResponseDispatcherModule,
     ActionsModule,
   ],

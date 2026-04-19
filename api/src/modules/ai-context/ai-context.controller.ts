@@ -69,8 +69,8 @@ export class AiContextController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Soft delete an AI context (deactivate)' })
-  @ApiResponse({ status: 200, description: 'AI Context deactivated successfully' })
+  @ApiOperation({ summary: 'Soft-delete an AI context (set deletedAt)' })
+  @ApiResponse({ status: 200, description: 'AI Context deleted successfully' })
   @ApiResponse({ status: 404, description: 'AI Context not found' })
   async remove(
     @CurrentTenant() tenantId: string,

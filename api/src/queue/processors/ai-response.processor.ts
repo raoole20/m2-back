@@ -2,15 +2,26 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import {
   ActionStatus,
+  ContentType,
   ConversationStatus,
+  MediaProcessingStatus,
   MessageDirection,
 } from '@prisma/client';
 import { Job } from 'bullmq';
 
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { AiContextService } from '../../modules/ai-context/ai-context.service.js';
 import { AiEngineService } from '../../modules/ai-engine/ai-engine.service.js';
 import { ResponseDispatcherService } from '../../modules/response-dispatcher/response-dispatcher.service.js';
 import { ActionsService } from '../../modules/actions/actions.service.js';
+
+interface PendingMessage {
+  id: string;
+  content: string;
+  contentType: ContentType;
+  transcription: string | null;
+  mediaProcessingStatus: MediaProcessingStatus;
+}
 
 @Processor('ai-response')
 export class AiResponseProcessor extends WorkerHost {
@@ -19,10 +30,30 @@ export class AiResponseProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiEngineService: AiEngineService,
+    private readonly aiContextService: AiContextService,
     private readonly responseDispatcher: ResponseDispatcherService,
     private readonly actionsService: ActionsService,
   ) {
     super();
+  }
+
+  private formatMessageForAi(m: PendingMessage): string {
+    if (m.contentType === ContentType.TEXT) {
+      return m.content ?? '';
+    }
+
+    const typeLabel = m.contentType.toLowerCase();
+    const caption = m.content && m.content.trim().length > 0
+      ? ` — caption: ${m.content.trim()}`
+      : '';
+
+    if (m.mediaProcessingStatus === MediaProcessingStatus.COMPLETED && m.transcription) {
+      return `[${typeLabel}${caption}]\n${m.transcription}`;
+    }
+    if (m.mediaProcessingStatus === MediaProcessingStatus.SKIPPED) {
+      return `[${typeLabel} recibido — tipo no soportado por este asistente${caption}]`;
+    }
+    return `[${typeLabel} recibido — no procesable${caption}]`;
   }
 
   async process(job: Job<{ conversationId: string }>): Promise<void> {
@@ -81,7 +112,13 @@ export class AiResponseProcessor extends WorkerHost {
         aiProcessed: false,
       },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, content: true },
+      select: {
+        id: true,
+        content: true,
+        contentType: true,
+        transcription: true,
+        mediaProcessingStatus: true,
+      },
     });
 
     if (pending.length === 0) {
@@ -91,12 +128,64 @@ export class AiResponseProcessor extends WorkerHost {
       return;
     }
 
+    const pendingIds = pending.map((m) => m.id);
+
+    const allSkipped =
+      pending.length > 0 &&
+      pending.every(
+        (m) =>
+          m.contentType !== ContentType.TEXT &&
+          m.mediaProcessingStatus === MediaProcessingStatus.SKIPPED,
+      );
+
+    if (allSkipped) {
+      const aiContext = await this.aiContextService.getActiveContext(
+        conversation.tenantId,
+      );
+      const fallback = aiContext?.unsupportedMediaMessage?.trim();
+
+      await this.prisma.message.updateMany({
+        where: { id: { in: pendingIds } },
+        data: { aiProcessed: true },
+      });
+
+      if (fallback) {
+        this.logger.log(
+          `⏭️  Batch 100% media no soportado, enviando unsupportedMediaMessage`,
+        );
+        const outbound = await this.responseDispatcher.dispatch(conversationId, fallback);
+        await this.actionsService.logAction(
+          conversation.tenantId,
+          conversationId,
+          'AI_UNSUPPORTED_MEDIA_FALLBACK',
+          { batchedMessageIds: pendingIds },
+          outbound
+            ? { outboundMessageId: outbound.id, status: outbound.status }
+            : null,
+          outbound?.status === 'SENT'
+            ? ActionStatus.SUCCESS
+            : ActionStatus.FAILED,
+        );
+      } else {
+        this.logger.log(
+          `⏭️  Batch 100% media no soportado y sin unsupportedMediaMessage configurado — omitiendo respuesta`,
+        );
+        await this.actionsService.logAction(
+          conversation.tenantId,
+          conversationId,
+          'AI_UNSUPPORTED_MEDIA_SILENT',
+          { batchedMessageIds: pendingIds },
+          null,
+          ActionStatus.SUCCESS,
+        );
+      }
+      return;
+    }
+
     const concatenated = pending
-      .map((m) => m.content)
+      .map((m) => this.formatMessageForAi(m))
       .filter((c) => c && c.trim().length > 0)
       .join('\n');
-
-    const pendingIds = pending.map((m) => m.id);
 
     this.logger.log(
       `🤖 Procesando batch de ${pending.length} mensaje(s) con IA (conv. ${conversationId.slice(0, 8)})`,

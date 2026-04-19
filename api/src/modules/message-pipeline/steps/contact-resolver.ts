@@ -14,6 +14,26 @@ export class ContactResolver {
     tenantId: string,
     normalizedMsg: NormalizedMessage,
   ): Promise<Contact> {
+    const existing = await this.prisma.contact.findUnique({
+      where: {
+        tenantId_externalId_channelType: {
+          tenantId,
+          externalId: normalizedMsg.senderId,
+          channelType: normalizedMsg.channelType,
+        },
+      },
+      select: { id: true, name: true },
+    });
+
+    const updateData: Record<string, unknown> = { lastContactAt: new Date() };
+
+    if (normalizedMsg.senderName && !existing?.name) {
+      updateData.name = normalizedMsg.senderName;
+    }
+    if (normalizedMsg.senderPhone) {
+      updateData.phone = normalizedMsg.senderPhone;
+    }
+
     const contact = await this.prisma.contact.upsert({
       where: {
         tenantId_externalId_channelType: {
@@ -22,15 +42,7 @@ export class ContactResolver {
           channelType: normalizedMsg.channelType,
         },
       },
-      update: {
-        lastContactAt: new Date(),
-        ...(normalizedMsg.senderName && {
-          name: normalizedMsg.senderName,
-        }),
-        ...(normalizedMsg.senderPhone && {
-          phone: normalizedMsg.senderPhone,
-        }),
-      },
+      update: updateData,
       create: {
         tenantId,
         externalId: normalizedMsg.senderId,

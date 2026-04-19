@@ -8,6 +8,7 @@ import { ConversationResolver } from './steps/conversation-resolver.js';
 import { MessagePersister } from './steps/message-persister.js';
 import { AiContextModule } from '../ai-context/ai-context.module.js';
 import { AiEngineModule } from '../ai-engine/ai-engine.module.js';
+import { MediaProcessorModule } from '../media-processor/media-processor.module.js';
 import { ResponseDispatcherModule } from '../response-dispatcher/response-dispatcher.module.js';
 import { ActionsModule } from '../actions/actions.module.js';
 
@@ -19,6 +20,7 @@ import { ActionsModule } from '../actions/actions.module.js';
     ),
     AiContextModule,
     AiEngineModule,
+    MediaProcessorModule,
     ResponseDispatcherModule,
     ActionsModule,
   ],
