@@ -25,13 +25,14 @@ export class TransformInterceptor<T>
         if (
           data &&
           typeof data === 'object' &&
-          'meta' in (data as Record<string, unknown>)
+          'meta' in (data as Record<string, unknown>) &&
+          'data' in (data as Record<string, unknown>)
         ) {
-          const { meta, ...rest } = data as Record<string, unknown>;
+          const payload = data as unknown as { data: unknown; meta: Record<string, unknown> };
           return {
             success: true,
-            data: rest as T,
-            meta: meta as Record<string, unknown>,
+            data: payload.data as T,
+            meta: payload.meta,
           };
         }
         return { success: true, data };

@@ -18,6 +18,7 @@ import { MessagePipelineModule } from './modules/message-pipeline/message-pipeli
 import { MediaProcessorModule } from './modules/media-processor/media-processor.module.js';
 import { ResponseDispatcherModule } from './modules/response-dispatcher/response-dispatcher.module.js';
 import { ActionsModule } from './modules/actions/actions.module.js';
+import { MailerModule } from './modules/mailer/mailer.module.js';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ActionsModule } from './modules/actions/actions.module.js';
       limit: 100,
     }]),
     QueueModule,
+    MailerModule,
     HealthModule,
     AuthModule,
     TenantsModule,

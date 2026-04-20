@@ -52,16 +52,38 @@ model User {
   name         String
   role         UserRole @default(AGENT)
   isActive     Boolean  @default(true)
+  emailVerified              Boolean   @default(false)
+  emailVerifiedAt            DateTime?
+  verificationTokenHash      String?   @unique
+  verificationTokenExpiresAt DateTime?
   deletedAt    DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   assignedConversations Conversation[] @relation("AssignedAgent")
+  passwordResets        PasswordResetToken[]
 
   @@unique([tenantId, email])
   @@index([tenantId, deletedAt])
   @@map("users")
+}
+
+model PasswordResetToken {
+  id          String    @id @default(uuid())
+  userId      String
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  usedAt      DateTime?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 enum UserRole {
