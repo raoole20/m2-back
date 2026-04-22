@@ -8,6 +8,16 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 
+const HTTP_CODE_MAP: Record<number, string> = {
+  400: 'BAD_REQUEST',
+  401: 'UNAUTHORIZED',
+  403: 'FORBIDDEN',
+  404: 'NOT_FOUND',
+  409: 'CONFLICT',
+  422: 'UNPROCESSABLE_ENTITY',
+  429: 'TOO_MANY_REQUESTS',
+};
+
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger('ExceptionFilter');
@@ -34,8 +44,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     response.status(status).json({
       success: false,
-      error: Array.isArray(message) ? message.join(', ') : message,
-      statusCode: status,
+      error: {
+        code: HTTP_CODE_MAP[status] ?? 'SERVER_ERROR',
+        message: Array.isArray(message) ? message.join(', ') : message,
+      },
     });
   }
 }
