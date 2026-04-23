@@ -92,13 +92,17 @@ export class AuthService implements OnModuleDestroy {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
-    const rawToken = this.generateToken();
-    const tokenHash = this.hashToken(rawToken);
+    const bypassVerification = this.isEmailVerificationBypassed();
+
+    const rawToken = bypassVerification ? null : this.generateToken();
+    const tokenHash = rawToken ? this.hashToken(rawToken) : null;
     const ttlHours = this.configService.get<number>(
       'mailer.emailVerificationTtlHours',
       24,
     );
-    const expiresAt = new Date(Date.now() + ttlHours * 3600 * 1000);
+    const expiresAt = rawToken
+      ? new Date(Date.now() + ttlHours * 3600 * 1000)
+      : null;
 
     const result = await this.prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
@@ -112,7 +116,8 @@ export class AuthService implements OnModuleDestroy {
           passwordHash,
           name: dto.name,
           role: UserRole.OWNER,
-          emailVerified: false,
+          emailVerified: bypassVerification,
+          emailVerifiedAt: bypassVerification ? new Date() : null,
           verificationTokenHash: tokenHash,
           verificationTokenExpiresAt: expiresAt,
         },
@@ -121,16 +126,20 @@ export class AuthService implements OnModuleDestroy {
       return { tenant, user };
     });
 
-    await this.emailQueue.add('send-verification', {
-      type: 'send-verification',
-      email: result.user.email,
-      name: result.user.name,
-      rawToken,
-      tenantSlug: result.tenant.slug,
-    });
+    if (rawToken) {
+      await this.emailQueue.add('send-verification', {
+        type: 'send-verification',
+        email: result.user.email,
+        name: result.user.name,
+        rawToken,
+        tenantSlug: result.tenant.slug,
+      });
+    }
 
     return {
-      message: 'Account created. Check your email to verify before logging in.',
+      message: bypassVerification
+        ? 'Account created. Email verification bypassed (dev mode).'
+        : 'Account created. Check your email to verify before logging in.',
       userId: result.user.id,
       tenantSlug: result.tenant.slug,
     };
@@ -151,7 +160,7 @@ export class AuthService implements OnModuleDestroy {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (!user.emailVerified) {
+    if (!user.emailVerified && !this.isEmailVerificationBypassed()) {
       throw new UnauthorizedException('EMAIL_NOT_VERIFIED');
     }
 
@@ -541,6 +550,13 @@ export class AuthService implements OnModuleDestroy {
   ): Promise<boolean> {
     const result = await this.redis.set(key, '1', 'EX', ttlSeconds, 'NX');
     return result === 'OK';
+  }
+
+  private isEmailVerificationBypassed(): boolean {
+    return (
+      this.configService.get<string>('AUTH_BYPASS_EMAIL_VERIFICATION') ===
+      'true'
+    );
   }
 
   private generateToken(): string {

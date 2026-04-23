@@ -130,6 +130,7 @@ services:
       - APP_FRONTEND_URL=${APP_FRONTEND_URL:-http://localhost:3001}
       - EMAIL_VERIFICATION_TTL_HOURS=${EMAIL_VERIFICATION_TTL_HOURS:-24}
       - PASSWORD_RESET_TTL_MINUTES=${PASSWORD_RESET_TTL_MINUTES:-30}
+      - AUTH_BYPASS_EMAIL_VERIFICATION=${AUTH_BYPASS_EMAIL_VERIFICATION:-false}
     volumes:
       - api_uploads:/app/uploads
     depends_on:
