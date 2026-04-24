@@ -3,7 +3,6 @@ volumes:
   n8n_storage:
   evolution_instances:
   redis_storage:
-  api_uploads:
 
 services:
   postgres:
@@ -90,53 +89,4 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-
-  api:
-    build:
-      context: ./api
-      dockerfile: ../docker/api/Dockerfile
-      target: development
-    restart: always
-    ports:
-      - "${API_PORT:-3000}:3000"
-    environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${API_DB:-m2_api}?schema=public
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - NODE_ENV=${NODE_ENV:-development}
-      - JWT_SECRET=${JWT_SECRET}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-      - JWT_EXPIRATION=${JWT_EXPIRATION:-15m}
-      - JWT_REFRESH_EXPIRATION=${JWT_REFRESH_EXPIRATION:-7d}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - STORAGE_TYPE=${STORAGE_TYPE:-local}
-      - STORAGE_LOCAL_PATH=${STORAGE_LOCAL_PATH:-./uploads}
-      - META_APP_SECRET=${META_APP_SECRET:-}
-      - META_VERIFY_TOKEN=${META_VERIFY_TOKEN:-}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-      - SWAGGER_ENABLED=${SWAGGER_ENABLED:-true}
-      - EVOLUTION_API_URL=${EVOLUTION_API_URL:-http://evolution-api:8080}
-      - LOG_LEVEL=${LOG_LEVEL:-lite}
-      - SMTP_HOST=${SMTP_HOST:-mailhog}
-      - SMTP_PORT=${SMTP_PORT:-1025}
-      - SMTP_SECURE=${SMTP_SECURE:-false}
-      - SMTP_USER=${SMTP_USER:-}
-      - SMTP_PASS=${SMTP_PASS:-}
-      - SMTP_FROM=${SMTP_FROM:-M2 <no-reply@m2.local>}
-      - APP_FRONTEND_URL=${APP_FRONTEND_URL:-http://localhost:3001}
-      - EMAIL_VERIFICATION_TTL_HOURS=${EMAIL_VERIFICATION_TTL_HOURS:-24}
-      - PASSWORD_RESET_TTL_MINUTES=${PASSWORD_RESET_TTL_MINUTES:-30}
-      - AUTH_BYPASS_EMAIL_VERIFICATION=${AUTH_BYPASS_EMAIL_VERIFICATION:-false}
-    volumes:
-      - api_uploads:/app/uploads
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      evolution-api:
         condition: service_healthy

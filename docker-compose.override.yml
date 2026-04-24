@@ -1,6 +1,0 @@
-# Development overrides — applied automatically by docker compose up
-services:
-  api:
-    volumes:
-      - ./api/src:/app/src
-      - ./api/prisma:/app/prisma

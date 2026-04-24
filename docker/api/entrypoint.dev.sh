@@ -8,4 +8,4 @@ echo "[entrypoint] Applying pending migrations..."
 npx prisma migrate deploy
 
 echo "[entrypoint] Starting NestJS in dev mode..."
-exec npm run start:dev
+exec pnpm run start:dev

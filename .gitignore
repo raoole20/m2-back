@@ -30,5 +30,8 @@ Thumbs.db
 npm-debug.log*
 
 # Prisma
-api/prisma/*.db
-api/prisma/*.db-journal
+prisma/*.db
+prisma/*.db-journal
+
+# pnpm
+.pnpm-store/
